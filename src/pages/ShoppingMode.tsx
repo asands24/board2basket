@@ -1,7 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useListItems } from '../hooks/useListItems';
 import { ArrowLeft, Check, ShoppingCart } from 'lucide-react';
-import clsx from 'clsx';
 
 export default function ShoppingMode() {
     const { listId } = useParams<{ listId: string }>();

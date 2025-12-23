@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useListItems } from '../hooks/useListItems';
 import { Plus, Trash2, Check, AlertTriangle } from 'lucide-react';
-import clsx from 'clsx';
 
 interface GroceryListProps {
     listId: string;

@@ -2,7 +2,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useListItems } from '../hooks/useListItems';
 import { useState } from 'react';
 import { ArrowLeft, ChefHat, Loader2, Utensils } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
 interface MealPlanData {
     days: {
