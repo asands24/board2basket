@@ -91,6 +91,18 @@ export default function MealPlan() {
                         <p className="text-gray-500 mb-8">
                             Generate recipes using your {purchasedItems.length} purchased ingredients.
                         </p>
+
+                        {purchasedItems.length < 3 && (
+                            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                <p className="text-sm text-amber-800 font-medium">
+                                    ⚠️ You only have {purchasedItems.length} purchased {purchasedItems.length === 1 ? 'item' : 'items'}
+                                </p>
+                                <p className="text-xs text-amber-700 mt-1">
+                                    For better meal suggestions, mark more items as purchased first.
+                                </p>
+                            </div>
+                        )}
+
                         <button
                             onClick={handleGenerate}
                             disabled={generating || itemsLoading}

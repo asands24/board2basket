@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { CheckSquare, Camera, Menu, Loader2, ShoppingCart, Utensils } from 'lucide-react';
+import { CheckSquare, Camera, Loader2, ShoppingCart, Utensils } from 'lucide-react';
 import GroceryList from '../components/GroceryList';
 import { useListItems } from '../hooks/useListItems';
 
@@ -11,6 +11,7 @@ export default function HouseholdDetail() {
   const [listId, setListId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { addItem } = useListItems(listId);
@@ -92,7 +93,12 @@ export default function HouseholdDetail() {
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="sticky top-0 z-10 bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-bold">Household</h1>
-        <button><Menu className="w-6 h-6" /></button>
+        <button
+          onClick={() => setShowInviteModal(true)}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+        >
+          Share
+        </button>
       </header>
 
       <main className="flex-1 p-4 pb-24">
@@ -113,6 +119,7 @@ export default function HouseholdDetail() {
                 ref={fileInputRef}
                 className="hidden"
                 accept="image/*"
+                capture="environment"
                 onChange={handleFileChange}
               />
             </div>
@@ -148,6 +155,38 @@ export default function HouseholdDetail() {
           <span className="text-xs">Meals</span>
         </button>
       </nav>
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold mb-2">Invite Roommates</h3>
+            <p className="text-sm text-gray-600 mb-4">Share this code with your roommates so they can join your household:</p>
+
+            <div className="bg-gray-100 rounded-lg p-4 mb-4">
+              <p className="text-xs text-gray-500 mb-1">Household Invite Code:</p>
+              <code className="text-sm font-mono break-all select-all">{id}</code>
+            </div>
+
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(id || '');
+                alert('Invite code copied to clipboard!');
+              }}
+              className="w-full bg-blue-600 text-white rounded-md py-2 px-4 font-medium hover:bg-blue-500 mb-2"
+            >
+              Copy Code
+            </button>
+
+            <button
+              onClick={() => setShowInviteModal(false)}
+              className="w-full bg-gray-200 text-gray-700 rounded-md py-2 px-4 font-medium hover:bg-gray-300"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

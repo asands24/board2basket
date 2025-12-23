@@ -14,7 +14,18 @@ export default async (req: Request, context: Context) => {
         const { image } = await req.json();
 
         if (!image) {
-            return new Response("Missing image data", { status: 400 });
+            return new Response(JSON.stringify({ error: "Missing image data" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+
+        // Validate image size (base64 string length check, ~10MB limit)
+        if (image.length > 13500000) { // ~10MB in base64
+            return new Response(JSON.stringify({ error: "Image too large. Maximum size is 10MB" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" }
+            });
         }
 
         const prompt = `
@@ -67,12 +78,20 @@ export default async (req: Request, context: Context) => {
             throw new Error("No content returned from AI");
         }
 
+        // Validate output schema
+        const parsedData = JSON.parse(content);
+        if (!parsedData.items || !Array.isArray(parsedData.items)) {
+            throw new Error("Invalid response format from AI");
+        }
+
         return new Response(content, {
             headers: { "Content-Type": "application/json" },
         });
     } catch (error: any) {
         console.error("Error extracting whiteboard:", error);
-        return new Response(JSON.stringify({ error: error.message }), {
+        return new Response(JSON.stringify({
+            error: error.message || "Failed to extract items from image. Please try again."
+        }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
         });

@@ -12,6 +12,7 @@ export interface ListItem {
     status: 'active' | 'purchased' | 'removed';
     confidence: number | null;
     source: 'manual' | 'whiteboard' | 'receipt';
+    claimed_by: string | null;
 }
 
 export function useListItems(listId: string | null) {
@@ -105,5 +106,14 @@ export function useListItems(listId: string | null) {
         await updateItem(id, { status: 'removed' });
     }
 
-    return { items, loading, addItem, updateItem, deleteItem, toggleStatus };
+    async function claimItem(id: string) {
+        const userId = (await supabase.auth.getUser()).data.user?.id;
+        await updateItem(id, { claimed_by: userId });
+    }
+
+    async function unclaimItem(id: string) {
+        await updateItem(id, { claimed_by: null });
+    }
+
+    return { items, loading, addItem, updateItem, deleteItem, toggleStatus, claimItem, unclaimItem };
 }

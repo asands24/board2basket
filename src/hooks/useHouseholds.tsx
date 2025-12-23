@@ -68,5 +68,48 @@ export function useHouseholds() {
         return householdData;
     }
 
-    return { households, loading, createHousehold, refresh: fetchHouseholds };
+    async function joinHousehold(inviteCode: string) {
+        // For MVP, invite code is just the household ID
+        const householdId = inviteCode.trim();
+
+        // Check if household exists
+        const { data: household, error: fetchError } = await supabase
+            .from('households')
+            .select('*')
+            .eq('id', householdId)
+            .single();
+
+        if (fetchError || !household) {
+            throw new Error('Invalid invite code. Please check and try again.');
+        }
+
+        // Check if already a member
+        const userId = (await supabase.auth.getUser()).data.user?.id;
+        const { data: existingMember } = await supabase
+            .from('household_members')
+            .select('*')
+            .eq('household_id', householdId)
+            .eq('user_id', userId)
+            .single();
+
+        if (existingMember) {
+            throw new Error('You are already a member of this household.');
+        }
+
+        // Add as member
+        const { error: memberError } = await supabase
+            .from('household_members')
+            .insert([{
+                household_id: householdId,
+                user_id: userId,
+                role: 'member'
+            }]);
+
+        if (memberError) throw memberError;
+
+        setHouseholds([...households, household]);
+        return household;
+    }
+
+    return { households, loading, createHousehold, joinHousehold, refresh: fetchHouseholds };
 }

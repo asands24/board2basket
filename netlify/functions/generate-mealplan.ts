@@ -14,7 +14,19 @@ export default async (req: Request, context: Context) => {
         const { items, preferences } = await req.json();
 
         if (!items || !Array.isArray(items)) {
-            return new Response("Missing items array", { status: 400 });
+            return new Response(JSON.stringify({ error: "Missing items array" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+
+        if (items.length === 0) {
+            return new Response(JSON.stringify({
+                error: "You need at least 1 ingredient to generate a meal plan"
+            }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" }
+            });
         }
 
         const prompt = `
@@ -68,6 +80,12 @@ export default async (req: Request, context: Context) => {
 
         if (!content) {
             throw new Error("No content returned from AI");
+        }
+
+        // Validate output schema
+        const parsedData = JSON.parse(content);
+        if (!parsedData.days || !Array.isArray(parsedData.days)) {
+            throw new Error("Invalid meal plan format from AI");
         }
 
         return new Response(content, {

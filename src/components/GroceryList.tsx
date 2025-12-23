@@ -1,14 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useListItems } from '../hooks/useListItems';
-import { Plus, Trash2, Check, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Check, AlertTriangle, UserCheck } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface GroceryListProps {
     listId: string;
 }
 
 export default function GroceryList({ listId }: GroceryListProps) {
-    const { items, loading, addItem, toggleStatus, deleteItem } = useListItems(listId);
+    const { items, loading, addItem, toggleStatus, deleteItem, claimItem, unclaimItem } = useListItems(listId);
     const [newItemName, setNewItemName] = useState('');
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data }) => {
+            setCurrentUserId(data.user?.id || null);
+        });
+    }, []);
+
+    useEffect(() => {
+        // Fetch display names for all claimed_by users
+        const claimedByIds = items
+            .filter(i => i.claimed_by)
+            .map(i => i.claimed_by as string)
+            .filter((id, index, self) => self.indexOf(id) === index); // unique
+
+        if (claimedByIds.length > 0) {
+            supabase
+                .from('profiles')
+                .select('id, display_name')
+                .in('id', claimedByIds)
+                .then(({ data }) => {
+                    if (data) {
+                        const profiles: Record<string, string> = {};
+                        data.forEach(p => {
+                            profiles[p.id] = p.display_name || 'Someone';
+                        });
+                        setUserProfiles(profiles);
+                    }
+                });
+        }
+    }, [items]);
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -19,6 +52,14 @@ export default function GroceryList({ listId }: GroceryListProps) {
         } catch (error) {
             console.error(error);
             alert('Failed to add item');
+        }
+    };
+
+    const handleClaim = async (item: any) => {
+        if (item.claimed_by === currentUserId) {
+            await unclaimItem(item.id);
+        } else if (!item.claimed_by) {
+            await claimItem(item.id);
         }
     };
 
@@ -53,14 +94,14 @@ export default function GroceryList({ listId }: GroceryListProps) {
                         key={item.id}
                         className="group flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 shadow-sm hover:bg-gray-50"
                     >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1">
                             <button
                                 onClick={() => toggleStatus(item.id, item.status)}
                                 className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 hover:border-blue-500"
                             >
                                 {/* Empty circle for active */}
                             </button>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col flex-1">
                                 <span className="font-medium text-gray-900">{item.name}</span>
                                 <div className="flex gap-2 text-xs text-gray-500">
                                     {item.quantity && <span>{item.quantity} {item.unit}</span>}
@@ -72,14 +113,37 @@ export default function GroceryList({ listId }: GroceryListProps) {
                                         <span>Low confidence</span>
                                     </div>
                                 )}
+                                {item.claimed_by && (
+                                    <div className="mt-1 flex items-center gap-1 text-xs text-emerald-600">
+                                        <UserCheck className="h-3 w-3" />
+                                        <span>
+                                            {item.claimed_by === currentUserId
+                                                ? 'Claimed by you'
+                                                : `Claimed by ${userProfiles[item.claimed_by] || 'someone'}`}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        <button
-                            onClick={() => deleteItem(item.id)}
-                            className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {!item.claimed_by || item.claimed_by === currentUserId ? (
+                                <button
+                                    onClick={() => handleClaim(item)}
+                                    className={`text-xs px-2 py-1 rounded-md transition-opacity ${item.claimed_by === currentUserId
+                                            ? 'bg-emerald-100 text-emerald-700 opacity-100'
+                                            : 'bg-gray-100 text-gray-600 opacity-0 group-hover:opacity-100'
+                                        }`}
+                                >
+                                    {item.claimed_by === currentUserId ? 'Unclaim' : 'Claim'}
+                                </button>
+                            ) : null}
+                            <button
+                                onClick={() => deleteItem(item.id)}
+                                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </button>
+                        </div>
                     </div>
                 ))}
                 {activeItems.length === 0 && (
