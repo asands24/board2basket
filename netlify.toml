@@ -2,6 +2,10 @@
   command = "npm run build"
   publish = "dist"
 
+[build.environment]
+  # Allow Supabase anon key in build output - it's designed to be public
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_ANON_KEY"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
