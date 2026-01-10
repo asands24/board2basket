@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /households/{householdId} {
+        allow create: if request.auth != null;
+        allow read, update: if request.auth != null && request.auth.uid in resource.data.member_ids;
+        
+        match /members/{memberId} {
+            allow read, write: if request.auth != null; // Simplified for MVP
+        }
+        
+        match /lists/{listId} {
+            allow read, write: if request.auth != null; // Needs parent check in production
+            
+            match /items/{itemId} {
+                allow read, write: if request.auth != null;
+            }
+        }
+    }
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null; // Allow reading other profiles
+    }
+    match /lists/{listId} {
+        // Fallback for direct list access if used
+        allow read, write: if request.auth != null;
+    }
+  }
+}

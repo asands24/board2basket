@@ -1,11 +1,25 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { db, auth } from '../lib/firebase';
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    addDoc,
+    updateDoc,
+    doc,
+    getDoc,
+    arrayUnion,
+    Timestamp
+} from 'firebase/firestore';
 
 export interface Household {
     id: string;
     name: string;
     created_by: string;
     created_at: string;
+    member_ids: string[];
+    roles: Record<string, string>; // { uid: role }
 }
 
 export function useHouseholds() {
@@ -19,96 +33,108 @@ export function useHouseholds() {
     async function fetchHouseholds() {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('households')
-                .select('*');
-
-            if (error) {
-                console.error('Error fetching households:', error);
-            } else {
-                setHouseholds(data || []);
+            const user = auth.currentUser;
+            if (!user) {
+                setHouseholds([]);
+                return;
             }
+
+            const q = query(
+                collection(db, 'households'),
+                where('member_ids', 'array-contains', user.uid)
+            );
+
+            const querySnapshot = await getDocs(q);
+            const loadedHouseholds: Household[] = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                loadedHouseholds.push({
+                    id: doc.id,
+                    name: data.name,
+                    created_by: data.created_by,
+                    created_at: data.created_at?.toDate?.().toISOString() || new Date().toISOString(),
+                    member_ids: data.member_ids,
+                    roles: data.roles
+                });
+            });
+
+            setHouseholds(loadedHouseholds);
+        } catch (error) {
+            console.error('Error fetching households:', error);
         } finally {
             setLoading(false);
         }
     }
 
     async function createHousehold(name: string) {
-        const { data: householdData, error: distError } = await supabase
-            .from('households')
-            .insert([{ name, created_by: (await supabase.auth.getUser()).data.user?.id }])
-            .select()
-            .single();
+        const user = auth.currentUser;
+        if (!user) throw new Error("User not authenticated");
 
-        if (distError) throw distError;
+        const newHouseholdData = {
+            name,
+            created_by: user.uid,
+            created_at: Timestamp.now(),
+            member_ids: [user.uid],
+            roles: { [user.uid]: 'owner' }
+        };
 
-        // Add self as owner
-        const { error: memberError } = await supabase
-            .from('household_members')
-            .insert([{
-                household_id: householdData.id,
-                user_id: (await supabase.auth.getUser()).data.user?.id,
-                role: 'owner'
-            }]);
-
-        if (memberError) throw memberError;
+        const docRef = await addDoc(collection(db, 'households'), newHouseholdData);
 
         // Create a default list for the household
-        const { error: listError } = await supabase
-            .from('lists')
-            .insert([{
-                household_id: householdData.id,
-                title: 'Groceries',
-                created_by: (await supabase.auth.getUser()).data.user?.id
-            }]);
+        // Using root 'lists' collection for simplicity
+        await addDoc(collection(db, 'lists'), {
+            household_id: docRef.id,
+            title: 'Groceries',
+            created_by: user.uid,
+            created_at: Timestamp.now()
+        });
 
-        if (listError) console.error("Error creating default list", listError);
+        const newHousehold: Household = {
+            id: docRef.id,
+            ...newHouseholdData,
+            created_at: new Date().toISOString()
+        };
 
-        setHouseholds([...households, householdData]);
-        return householdData;
+        setHouseholds([...households, newHousehold]);
+        return newHousehold;
     }
 
     async function joinHousehold(inviteCode: string) {
+        const user = auth.currentUser;
+        if (!user) throw new Error("User not authenticated");
+
         // For MVP, invite code is just the household ID
         const householdId = inviteCode.trim();
 
-        // Check if household exists
-        const { data: household, error: fetchError } = await supabase
-            .from('households')
-            .select('*')
-            .eq('id', householdId)
-            .single();
+        const householdRef = doc(db, 'households', householdId);
+        const householdSnap = await getDoc(householdRef);
 
-        if (fetchError || !household) {
+        if (!householdSnap.exists()) {
             throw new Error('Invalid invite code. Please check and try again.');
         }
 
-        // Check if already a member
-        const userId = (await supabase.auth.getUser()).data.user?.id;
-        const { data: existingMember } = await supabase
-            .from('household_members')
-            .select('*')
-            .eq('household_id', householdId)
-            .eq('user_id', userId)
-            .single();
-
-        if (existingMember) {
+        const householdData = householdSnap.data();
+        if (householdData.member_ids.includes(user.uid)) {
             throw new Error('You are already a member of this household.');
         }
 
         // Add as member
-        const { error: memberError } = await supabase
-            .from('household_members')
-            .insert([{
-                household_id: householdId,
-                user_id: userId,
-                role: 'member'
-            }]);
+        await updateDoc(householdRef, {
+            member_ids: arrayUnion(user.uid),
+            [`roles.${user.uid}`]: 'member'
+        });
 
-        if (memberError) throw memberError;
+        const updatedHousehold: Household = {
+            id: householdSnap.id,
+            name: householdData.name,
+            created_by: householdData.created_by,
+            created_at: householdData.created_at?.toDate?.().toISOString() || new Date().toISOString(),
+            member_ids: [...householdData.member_ids, user.uid],
+            roles: { ...householdData.roles, [user.uid]: 'member' }
+        };
 
-        setHouseholds([...households, household]);
-        return household;
+        setHouseholds([...households, updatedHousehold]);
+        return updatedHousehold;
     }
 
     return { households, loading, createHousehold, joinHousehold, refresh: fetchHouseholds };

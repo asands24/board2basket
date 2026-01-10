@@ -6,8 +6,9 @@ import ShoppingMode from './pages/ShoppingMode';
 import MealPlan from './pages/MealPlan';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useEffect, useState } from 'react';
-import { supabase } from './lib/supabase';
-import type { Session } from '@supabase/supabase-js';
+import { auth, db } from './lib/firebase';
+import { onAuthStateChanged, type User } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { useHouseholds } from './hooks/useHouseholds';
 
 const DashboardStub = () => {
@@ -30,30 +31,35 @@ const DashboardStub = () => {
 
 
 function App() {
-  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [user, setUser] = useState<User | null | undefined>(undefined);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setUser(user);
+      if (user) {
+        // Sync user profile
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            email: user.email,
+            display_name: user.displayName || user.email?.split('@')[0],
+            last_seen: new Date().toISOString()
+          }, { merge: true });
+        } catch (e) {
+          console.error("Error updating user profile", e);
+        }
+      }
     });
-
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
-  if (session === undefined) return null; // Avoid flicker
+  if (user === undefined) return null; // Avoid flicker
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={session ? <Navigate to="/" /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
 
-        <Route element={<ProtectedRoute />}>
+        <Route element={<ProtectedRoute user={user} />}>
           <Route path="/" element={<DashboardStub />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/household/:id" element={<HouseholdDetail />} />

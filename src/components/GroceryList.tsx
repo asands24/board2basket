@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useListItems } from '../hooks/useListItems';
 import { Plus, Trash2, Check, AlertTriangle, UserCheck } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { db, auth } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface GroceryListProps {
     listId: string;
@@ -14,9 +15,10 @@ export default function GroceryList({ listId }: GroceryListProps) {
     const [userProfiles, setUserProfiles] = useState<Record<string, string>>({});
 
     useEffect(() => {
-        supabase.auth.getUser().then(({ data }) => {
-            setCurrentUserId(data.user?.id || null);
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+            setCurrentUserId(user?.uid || null);
         });
+        return () => unsubscribe();
     }, []);
 
     useEffect(() => {
@@ -27,19 +29,23 @@ export default function GroceryList({ listId }: GroceryListProps) {
             .filter((id, index, self) => self.indexOf(id) === index); // unique
 
         if (claimedByIds.length > 0) {
-            supabase
-                .from('profiles')
-                .select('id, display_name')
-                .in('id', claimedByIds)
-                .then(({ data }) => {
-                    if (data) {
-                        const profiles: Record<string, string> = {};
-                        data.forEach(p => {
-                            profiles[p.id] = p.display_name || 'Someone';
-                        });
-                        setUserProfiles(profiles);
+            Promise.all(claimedByIds.map(async (uid) => {
+                try {
+                    const userDoc = await getDoc(doc(db, 'users', uid));
+                    if (userDoc.exists()) {
+                        return { id: uid, name: userDoc.data().display_name || userDoc.data().email || 'Someone' };
                     }
+                } catch (e) {
+                    console.error("Error fetching profile", e);
+                }
+                return { id: uid, name: 'Someone' };
+            })).then((results) => {
+                const profiles: Record<string, string> = {};
+                results.forEach(r => {
+                    profiles[r.id] = r.name;
                 });
+                setUserProfiles(profiles);
+            });
         }
     }, [items]);
 
@@ -130,8 +136,8 @@ export default function GroceryList({ listId }: GroceryListProps) {
                                 <button
                                     onClick={() => handleClaim(item)}
                                     className={`text-xs px-2 py-1 rounded-md transition-opacity ${item.claimed_by === currentUserId
-                                            ? 'bg-emerald-100 text-emerald-700 opacity-100'
-                                            : 'bg-gray-100 text-gray-600 opacity-0 group-hover:opacity-100'
+                                        ? 'bg-emerald-100 text-emerald-700 opacity-100'
+                                        : 'bg-gray-100 text-gray-600 opacity-0 group-hover:opacity-100'
                                         }`}
                                 >
                                     {item.claimed_by === currentUserId ? 'Unclaim' : 'Claim'}

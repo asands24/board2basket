@@ -1,6 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { db, storage, functions } from '../lib/firebase';
+import { collection, query, where, getDocs, addDoc, limit, Timestamp } from 'firebase/firestore';
+import { ref, uploadBytes } from 'firebase/storage';
+import { httpsCallable } from 'firebase/functions';
 import { CheckSquare, Camera, Loader2, ShoppingCart, Utensils } from 'lucide-react';
 import GroceryList from '../components/GroceryList';
 import { useListItems } from '../hooks/useListItems';
@@ -20,25 +23,31 @@ export default function HouseholdDetail() {
     async function fetchList() {
       if (!id) return;
       setLoading(true);
-      const { data } = await supabase
-        .from('lists')
-        .select('id')
-        .eq('household_id', id)
-        .neq('status', 'complete')
-        .limit(1)
-        .maybeSingle();
 
-      if (data) {
-        setListId(data.id);
-      } else {
-        const { data: newList } = await supabase
-          .from('lists')
-          .insert([{ household_id: id, title: 'Groceries' }])
-          .select()
-          .single();
-        if (newList) setListId(newList.id);
+      try {
+        const q = query(
+          collection(db, 'lists'),
+          where('household_id', '==', id),
+          limit(1)
+        );
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          setListId(querySnapshot.docs[0].id);
+        } else {
+          // Create default list if not exists
+          const newListRef = await addDoc(collection(db, 'lists'), {
+            household_id: id,
+            title: 'Groceries',
+            created_at: Timestamp.now()
+          });
+          setListId(newListRef.id);
+        }
+      } catch (error) {
+        console.error("Error fetching list:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchList();
   }, [id]);
@@ -57,17 +66,15 @@ export default function HouseholdDetail() {
       reader.onloadend = async () => {
         const base64Info = reader.result as string;
 
+        // Upload to Firebase Storage
         const filePath = `${id}/${Date.now()}_${file.name}`;
-        await supabase.storage.from('uploads').upload(filePath, file);
+        const storageRef = ref(storage, 'uploads/' + filePath);
+        await uploadBytes(storageRef, file);
 
-        const response = await fetch('/.netlify/functions/extract-whiteboard', {
-          method: 'POST',
-          body: JSON.stringify({ image: base64Info }),
-        });
-
-        if (!response.ok) throw new Error('AI extraction failed');
-
-        const { items, warnings } = await response.json();
+        // Call Cloud Function
+        const extractWhiteboardFn = httpsCallable(functions, 'extractWhiteboard');
+        const result = await extractWhiteboardFn({ image: base64Info });
+        const { items, warnings } = result.data as any;
 
         if (items && Array.isArray(items)) {
           for (const item of items) {

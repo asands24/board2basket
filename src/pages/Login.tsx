@@ -1,27 +1,58 @@
-import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect } from 'react';
+import { auth } from '../lib/firebase';
+import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
 import { ShoppingBasket } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (isSignInWithEmailLink(auth, window.location.href)) {
+            let emailForSignIn = window.localStorage.getItem('emailForSignIn');
+            if (!emailForSignIn) {
+                emailForSignIn = window.prompt('Please provide your email for confirmation');
+            }
+
+            if (emailForSignIn) {
+                setLoading(true);
+                signInWithEmailLink(auth, emailForSignIn, window.location.href)
+                    .then(() => {
+                        window.localStorage.removeItem('emailForSignIn');
+                        navigate('/');
+                    })
+                    .catch((error) => {
+                        console.error("Error signing in with email link", error);
+                        setMessage(error.message);
+                    })
+                    .finally(() => {
+                        setLoading(false);
+                    });
+            }
+        }
+    }, [navigate]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        const { error } = await supabase.auth.signInWithOtp({
-            email,
-            options: {
-                emailRedirectTo: window.location.origin,
-            },
-        });
 
-        if (error) {
-            alert(error.message);
-        } else {
+        const actionCodeSettings = {
+            url: window.location.origin + '/login', // Redirect to /login to handle the link
+            handleCodeInApp: true,
+        };
+
+        try {
+            await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+            window.localStorage.setItem('emailForSignIn', email);
             setMessage('Check your email for the login link!');
+        } catch (error: any) {
+            console.error("Error sending email link", error);
+            alert(error.message);
         }
+
         setLoading(false);
     };
 

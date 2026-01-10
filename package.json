@@ -10,9 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@netlify/functions": "^5.1.1",
-    "@supabase/supabase-js": "^2.89.0",
     "clsx": "^2.1.1",
+    "firebase": "^12.7.0",
     "lucide-react": "^0.562.0",
     "openai": "^6.15.0",
     "react": "^19.2.0",

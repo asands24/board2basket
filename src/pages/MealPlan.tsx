@@ -2,6 +2,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useListItems } from '../hooks/useListItems';
 import { useState } from 'react';
 import { ArrowLeft, ChefHat, Loader2, Utensils } from 'lucide-react';
+import { functions } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 interface MealPlanData {
     days: {
@@ -32,8 +34,7 @@ export default function MealPlan() {
     const handleGenerate = async () => {
         setGenerating(true);
         try {
-            // 1. Gather ingredients (Purchased + Active as backup? Prompt said purchased but usually you cook with what you have)
-            // I'll send purchased items primarily.
+            // 1. Gather ingredients
             const ingredients = purchasedItems.map(i => ({ name: i.name, quantity: i.quantity, unit: i.unit }));
 
             if (ingredients.length === 0) {
@@ -45,21 +46,15 @@ export default function MealPlan() {
             }
 
             // 2. Call API
-            const response = await fetch('/.netlify/functions/generate-mealplan', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    items: ingredients,
-                    preferences: { diet: "any" } // Placeholder for preferences
-                }),
+            const generateMealplanFn = httpsCallable(functions, 'generateMealplan');
+            const result = await generateMealplanFn({
+                items: ingredients,
+                preferences: { diet: "any" }
             });
 
-            if (!response.ok) throw new Error('Failed to generate plan');
-
-            const data = await response.json();
+            // result.data contains the return value
+            const data = result.data as MealPlanData;
             setMealPlan(data);
-
-            // Save to DB (optional for MVP, skipping for speed unless asked)
 
         } catch (error: any) {
             console.error(error);

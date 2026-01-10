@@ -1,30 +1,16 @@
-import { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import type { Session } from '@supabase/supabase-js';
+import type { User } from 'firebase/auth';
 
-export default function ProtectedRoute() {
-    const [session, setSession] = useState<Session | null | undefined>(undefined);
+interface ProtectedRouteProps {
+    user: User | null | undefined;
+}
 
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-        });
-
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-        });
-
-        return () => subscription.unsubscribe();
-    }, []);
-
-    if (session === undefined) {
+export default function ProtectedRoute({ user }: ProtectedRouteProps) {
+    if (user === undefined) {
         return <div className="flex justify-center p-10">Loading...</div>; // Simple loading state
     }
 
-    if (!session) {
+    if (!user) {
         return <Navigate to="/login" replace />;
     }
 
